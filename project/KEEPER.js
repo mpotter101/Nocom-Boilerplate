@@ -1,4 +1,6 @@
 var KEEPER = {
+	_stopUpdate: false,
+	
 	defaults: {
 		name: { length: 10 },
 		cam: {
@@ -15,11 +17,20 @@ var KEEPER = {
 	},
 	
 	characters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-	scenes: {},
 	camTypes: {
 		orthographic: 'OrthographicCamera',
 		perpsective: 'PerspectiveCamera'
 	},
+	
+	
+	scenes: {},
+	keys: {
+		down: {},
+		held: {},
+		up: {},
+	},
+	
+	OnUpdate: [],
 	
 	// ---
 	// Functions not meant to be interacted with outside of this object
@@ -58,7 +69,82 @@ var KEEPER = {
 		
 		return newData;
 	},
+	
+	_KeyListener: (data) => {
+		var key = data.key;
+		var eventType = data.type;
+		
+		if (eventType == 'down' && KEEPER.keys.held [key] == 1) {return;}
+		
+		switch (eventType) {
+			case 'down': 
+				KEEPER.keys.held [key] = 0; KEEPER.keys.up [key] = 0; KEEPER.keys.down [key] = 1;
+				break;
+			case 'up': 
+				KEEPER.keys.held [key] = 0; KEEPER.keys.down [key] = 0; KEEPER.keys.up [key] = 1;
+				break;
+		}
+	},
+	
+	_UpdateKeyState: () => {
+		// let pressed keys be marked as pressed for 1 frame
+		Object.keys (KEEPER.keys.down).forEach (key => {
+			if (KEEPER.keys.down [key] == 1) { 
+				KEEPER.keys.down [key] = 0;
+				KEEPER.keys.held [key] = 1;
+			}
+		});
+		
+		Object.keys (KEEPER.keys.up).forEach (key => {
+			if (KEEPER.keys.up [key] == 1) { 
+				KEEPER.keys.up [key] = 0;
+			}
+		});
+	},
+	
+	
+	_GetActiveKeysFromArea: (area) => {
+		var result = [];
+		
+		Object.keys (area).forEach (key => {
+			if (area [key] > 0) { result.push(key); }
+		});
+		
+		return result;
+	},
+	
+
+	_Render: () => {
+		Object.keys (KEEPER.scenes).forEach (kSceneKey => {
+			var kScene = KEEPER.scenes[kSceneKey];
+			kScene.renderer.render (kScene.scene, kScene.camera)
+		});
+	},
+	
+	_Update: () => {
+		try {
+			requestAnimationFrame(KEEPER._Update);
+			if (KEEPER._stopUpdate) {return}
+			
+			console.log (KEEPER.GetInputState());
+			
+			KEEPER._UpdateKeyState();
+			
+			KEEPER._Render();
+		}
+		catch (e) {
+			console.error (e);
+		}
+	},
 	//---
+	
+	GetInputState: () => {
+		return {
+			down: KEEPER._GetActiveKeysFromArea(KEEPER.keys.down), 
+			held: KEEPER._GetActiveKeysFromArea(KEEPER.keys.held), 
+			up: KEEPER._GetActiveKeysFromArea(KEEPER.keys.up)
+		}
+	},
 	
 	GenerateName: (data) => {  
 		var safeData = KEEPER._EnsureDefaults (
@@ -165,10 +251,22 @@ var KEEPER = {
 		return { geometry, material, cube }
 	},
 	
-	Render: () => {
-		Object.keys (KEEPER.scenes).forEach (kSceneKey => {
-			var kScene = KEEPER.scenes[kSceneKey];
-			kScene.renderer.render (kScene.scene, kScene.camera)
-		});
-	}
+	Stop: () => {
+		KEEPER._stopUpdate = true;
+	},
+	
+	Resume: () => {
+		KEEPER._stopUpdate = false;
+	},
 }
+
+
+$(window).on('keypress', (data) => {
+	KEEPER._KeyListener({type: 'down', key: data.key}); 
+});
+
+$(window).on('keyup', (data) => {
+	KEEPER._KeyListener({type: 'up', key: data.key}); 
+});
+
+KEEPER._Update();
