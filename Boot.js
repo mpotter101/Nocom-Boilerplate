@@ -1,5 +1,5 @@
 console.clear ();
-console.log ("Nocom Boilerplate: A no-compile no-server-needed boilerplate for front-end app development.");
+console.log ("Nocom Boilerplate: A no-compile no-server-needed boilerplate for front-end game development.");
 console.log ("Checking Libraries:");
 console.log ("Jquery:", $);
 console.log ("Pixi:", PIXI);
