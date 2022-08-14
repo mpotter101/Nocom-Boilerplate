@@ -20,9 +20,8 @@ var Main = {
 	CubeInputHandler: () => {
 		if (KEEPER.GetKeyHeld({key: 'j'}))
 		{
-			console.log('here');
-			Main.kShape.cube.rotation.x += 0.01;
-			Main.kShape.cube.rotation.y += 0.01;
+			Main.kShape.cube.rotation.x += 1 * KEEPER.deltaTime;
+			Main.kShape.cube.rotation.y += 1 * KEEPER.deltaTime;
 		}
 		
 		if (KEEPER.GetKeyDown({key: 'k'}))
