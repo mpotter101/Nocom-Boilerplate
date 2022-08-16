@@ -3,15 +3,17 @@ var KEEPER = {
 	_stopUpdate: false,
 	_onUpdate: [],
 	_onLateUpdate: [],
+	_animeAnimations: [],
 	_timedEvents: [],
 	_timeLastFrameMs: 0,
 	_pauseOnError: true,
+	_colliders: [],
 	
 	// For use in initial setup or when data is missing from a method call
 	defaults: {
 		name: { length: 10 },
 		cam: {
-			fov: 60,
+			fov: 70,
 			aspectRatio: 800/600,
 			nearClipping: 0.1,
 			farClipping: 1000
@@ -27,8 +29,12 @@ var KEEPER = {
 	characters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
 	camTypes: {
 		orthographic: 'OrthographicCamera',
-		perpsective: 'PerspectiveCamera'
+		perspective: 'PerspectiveCamera'
 	},
+	severity: {
+		error: 'error',
+	},
+	
 	
 	// Game engine state
 	scenes: {},
@@ -41,52 +47,85 @@ var KEEPER = {
 	
 	// Debug options
 	debug: {
-		logKeypress: false
+		keypress: false
 	},
 	
 	// ---
 	// Functions not meant to be interacted with outside of this object
 	// Essentially private, but end-user should be allowed to interact with these
 	
-	_DebugLog: (debugKey, message) => {
-		if (KEEPER.debug [debugKey]) {
-			console.log (message);
+	_Boot: () => {
+		
+		var jQueryAvailable = window.$ ? true : undefined;
+		var pixiAvailable = window.PIXI ? true : undefined;
+		var animeAvailable = window.anime ? true: undefined;
+		var threeAvailable = window.THREE ? true : undefined;
+		
+		var message = "KEEPER starting up...\n";
+		message += "Checking Libraries:\n";
+		message += "\tJquery: %f" + jQueryAvailable + '%f\n';
+		message += "\tPixi: " + pixiAvailable + '\n';
+		message += "\tAnime: " + animeAvailable + '\n';
+		message += "\tThreeJS: " + threeAvailable + '\n';
+		
+		KEEPER.Log ({
+			message: { foo: 'bar' }
+		});			
+		
+		if (
+			jQueryAvailable &&
+			pixiAvailable &&
+			animeAvailable &&
+			threeAvailable
+		) {
+			KEEPER.Log({message: message + "All dependencies detected. Starting KEEPER..."});
+			KEEPER._Update();
+			return;
 		}
+		
+		KEEPER.Log ({message});
+		
+		KEEPER.Log({
+				message: 'Missing Dependencies! Please ensure listed libraries are loaded onto the page before KEEPER is loaded.',
+				severity: KEEPER.severity.error
+			});
+		
+		KEEPER.Log({
+			message: 'KEEPER not started.',
+			severity: KEEPER.severity.error
+		});
 	},
 	
-	
 	_CreateScene: (data) => {
-		var safeData = KEEPER._EnsureDefaults(
-			{
-				camera: KEEPER.CreateCamera()
-			},
-			data
-		);
+		var safeData = data;
+		
+		// prevents confusing logs in console
+		if (!('camera' in safeData))
+		{
+			safeData.camera = KEEPER.CreateCamera();
+		}
 		
 		var camera = safeData.camera;
 		var scene = new THREE.Scene();
 		var renderer = new THREE.WebGLRenderer();
 		
-		return { camera, scene, renderer }
+		return { 
+			camera, scene, renderer,
+			Add: (sceneObj) => { scene.add (sceneObj); },
+		}
 	},
 	
 	_EnsureDefaults: (defaultValues, actualValues) => {
-		var keys = Object.keys (defaultValues);
-		var newData = {};
-		
 		if (actualValues == undefined) { actualValues = {} } 
 		
 		if (actualValues.constructor != Object) {
 			throw new Error ("Values provided to method are not an object literal.");
 		}
 		
-		keys.forEach (k => {
-			newData [k] = defaultValues [k];
-			
-			if (k in actualValues) { newData [k] = actualValues [k]; }
-		});
-		
-		return newData;
+		return Object.assign(
+			defaultValues,
+			actualValues
+		);
 	},
 	
 	_KeyListener: (data) => {
@@ -95,7 +134,11 @@ var KEEPER = {
 		
 		if (eventType == 'down' && KEEPER.keys.held [key] == 1) {return;}
 		
-		KEEPER._DebugLog ('logKeypress', eventType + ': ' + key);
+		KEEPER.Log ({
+			debugKey: 'keypress',
+			severity: KEEPER.severity.quiet,	
+			message: eventType + ': ' + key
+		});
 		
 		switch (eventType) {
 			case 'down': 
@@ -131,6 +174,55 @@ var KEEPER = {
 		});
 		
 		return result;
+	},
+	
+	_CheckSphereIntersection: (sphereA, sphereB) => {
+		var distance = sphereA.sceneObj.position.distanceTo (sphereB.sceneObj.position);
+		
+		return distance < sphereA.radius + sphereB.radius
+	},
+	
+	_CheckForCollisions: () => {
+		// Check for any new or continued collisions
+		KEEPER._colliders.forEach (collider => {
+			KEEPER._colliders.forEach (otherCollider => {
+				if (
+					collider.id != otherCollider.id &&
+					collider.team != otherCollider.team
+				) {
+					var result = KEEPER._CheckSphereIntersection(collider, otherCollider)
+					var currentState = collider.collisions [otherCollider.id];
+					var data = {owner: collider.owner, other: otherCollider.owner};
+					
+					if (!(otherCollider.id in collider.collisions))
+					{
+						collider.collisions [otherCollider.id] = false;
+					}
+					
+					// A collision happened this frame.
+					if (currentState == false && result == true)
+					{
+						collider.OnCollisionEnter(data);
+					}
+					
+					// A collision has been occurring since last frame
+					if (
+						currentState == false && result == true ||
+						currentState == true && result == true
+					) {
+						collider.OnCollisionStay(data);
+					}
+					
+					// A collision just stopped happening
+					if (currentState == true && result == false)
+					{
+						collider.OnCollisionLeave(data);
+					}
+					
+					collider.collisions [otherCollider.id] = result;
+				}
+			});
+		});
 	},
 
 	_Render: () => {
@@ -175,6 +267,9 @@ var KEEPER = {
 			
 			// Normal update
 			KEEPER._onUpdate.forEach (item => { item.method() });
+			
+			// Check for collisions
+			KEEPER._CheckForCollisions();
 			
 			// Late update
 			KEEPER._onLateUpdate.forEach (item => { item.method() });
@@ -393,38 +488,57 @@ var KEEPER = {
 		return result;
 	},
 	
-	
 	// Creates a THREE.cam with sensible defaults that can be customized.
 	CreateCamera: (data) => {
 		var safeData = KEEPER._EnsureDefaults (
 			{ 
-				type: KEEPER.camTypes.persective,
+				type: KEEPER.camTypes.perspective,
+				
+				// perspective stuff
 				fov: KEEPER.defaults.cam.fov, 
 				aspectRatio: KEEPER.defaults.cam.aspectRatio, 
-				height: KEEPER.defaults.scene.height, 
-				width: KEEPER.defaults.scene.width, 
+				
+				// orthographic stuff
+				left: -4,
+				right: 4,
+				top: 3,
+				bottom: -3, 
+				// Needed by both
 				nearClipping: KEEPER.defaults.cam.nearClipping, 
-				farClipping: KEEPER.defaults.cam.farClipping 
+				farClipping: KEEPER.defaults.cam.farClipping,
 			},
 			data
 		);
 		
-		var type = safeData.type;
 		
 		// return camera
-		switch (type) {
+		switch (safeData.type) {
 			case KEEPER.camTypes.perspective:
-				
+				KEEPER.Log ({message: 'Making ' + KEEPER.camTypes.perspective + ' camera'});
 				// return the perspective camera
 				return new THREE.PerspectiveCamera(
 					safeData.fov, 
-					safeData.aspectRation, 
+					safeData.aspectRatio, 
 					safeData.nearClipping, 
 					safeData.farClipping
 				);
+				break;
 			case KEEPER.camTypes.orthographic:
-				return new THREE.OrthographicCamera
+				KEEPER.Log ({message: 'Making ' + KEEPER.camTypes.orthographic + ' camera'});
+				
+				// return the orthographic camera
+				return new THREE.OrthographicCamera(
+					safeData.left,
+					safeData.right,
+					safeData.top,
+					safeData.bottom, 
+					safeData.nearClipping,
+					safeData.farClipping
+				);
+				break;
 			default: 
+			
+				// Warn user that a camera could not be found.
 				var ortho = KEEPER.camTypes.orthographic;
 				var persp = KEEPER.camTypes.perspective;
 				console.log ("Camera type", type, "not recognized. Try either", ortho, "or", persp);
@@ -439,21 +553,30 @@ var KEEPER = {
 				node: $(document.body), 
 				height: KEEPER.defaults.scene.height, 
 				width: KEEPER.defaults.scene.width, 
-				camera: KEEPER.CreateCamera(), 
-				name: KEEPER.GenerateName() 
 			},
 			data
 		);
 		
+		// Function act a bit weird when passed into _EnsureDefaults...
+		// manually assigning here to avoid that.
+		if (!('camera' in safeData)) {
+			console.log ('here');
+			safeData.camera = KEEPER.CreateCamera()
+		}
+		
+		if (!('name' in safeData)) {
+			safeData.name = KEEPER.GenerateName()
+		}
+		
 		var n = safeData.name;
 		var node = safeData.node;
 		
-		console.log ("Creating new KEEPER Scene in node:", node);
-		
-		KEEPER.scenes [n] = KEEPER._CreateScene ();
+		KEEPER.scenes [n] = KEEPER._CreateScene (safeData)
 		KEEPER.scenes [n].renderer.setSize (safeData.width, safeData.height);
 		
 		node.append (KEEPER.scenes [n].renderer.domElement);
+		
+		KEEPER.Log ({message: 'Creating scene: ' + n});
 		
 		return KEEPER.scenes [n];
 	},
@@ -472,9 +595,112 @@ var KEEPER = {
 	CreateBasicKeeperShape: () => {
 		var geometry = new THREE.BoxGeometry (1, 1, 1);
 		var material = new THREE.MeshBasicMaterial({color: 0x00ff00});
-		var cube = new THREE.Mesh (geometry, material);
+		var sceneObj = new THREE.Mesh (geometry, material);
 		
-		return { geometry, material, cube }
+		return { geometry, material, sceneObj }
+	},
+	
+	CreateCollisionSphere: (data) => {
+		var safeData = KEEPER._EnsureDefaults({
+				owner: KEEPER,
+				diameter: 1,
+				OnCollisionEnter: () => {},
+				OnCollisionStay: () => {},
+				OnCollisionLeave: () => {},
+				enabled: true,
+				id: KEEPER.GenerateKeeperId({length: 20}),
+				team: KEEPER.GenerateKeeperId({length: 20}),
+				
+				// for debug view
+				verticalSections: 8,
+				horizontalSections: 8,
+				color: 0xffffff,
+			}, 
+			data
+		);
+		
+		var sphere = new THREE.SphereGeometry (
+			safeData.diameter * 0.5, 
+			safeData.verticalSections, 
+			safeData.horizontalSections
+		);
+		
+		var wireframe = new THREE.EdgesGeometry (sphere);
+		var sceneObj = new THREE.LineSegments (wireframe);
+		
+		// hide collider
+		sceneObj.material.depthTest = false;
+		sceneObj.material.transparent = true;
+		sceneObj.material.opacity = 0;
+		sceneObj.material.color = new THREE.Color (safeData.color);
+		
+		var collider = {
+			collisions: {},
+			diameter: safeData.diameter,
+			radius: safeData.diameter * 0.5,
+			sphere, wireframe, sceneObj,
+			id: safeData.id,
+			team: safeData.team,
+			owner: safeData.owner,
+			enabled: safeData.enabled,
+			Show: () => { sceneObj.material.opacity = 1; },
+			Hide: () => { sceneObj.material.opacity = 0; },
+			OnCollisionEnter: safeData.OnCollisionEnter,
+			OnCollisionStay: safeData.OnCollisionStay,
+			OnCollisionLeave: safeData.OnCollisionLeave,
+		}
+		
+		KEEPER._colliders.push(collider);
+		
+		KEEPER.Log ({message: 'Creating Sphere Collider: ' + collider.id});
+		
+		return collider
+	},
+	
+	RemoveCollider: (data) => {
+		var safeData = KEEPER._EnsureDefaults ({
+				id: ''
+			},
+			data
+		);
+		
+		KEEPER._colliders = KEEPER._colliders.filter (c => c.id != safeData.id); 
+	},
+	
+	Log: (data) => {
+		var safeData = KEEPER._EnsureDefaults({
+				debugKey: '',
+				message: 'No message provided for log.', 
+				severity: ''
+			}, 
+			data
+		);
+		
+		// Don't log debug info if its turned off.
+		if (KEEPER.debug [safeData.debugKey] == false) {return;}
+		
+		var prefixKeeper, prefixKeeperStyle, prefix;
+		var prefixTime = '[ ' + new Date().toLocaleTimeString() + ' ]';
+		
+		switch (safeData.severity) {
+			case KEEPER.severity.quiet:
+				prefixKeeper = '%c KEEPER ' + prefixTime;
+				prefixKeeperStyle = 'color:#aaaaaa; font-size: 0.9em;';
+				console.log (prefixKeeper, prefixKeeperStyle, safeData.message);
+				break;
+			case KEEPER.severity.error:
+				prefixKeeper = '%c!!! KEEPER';
+				prefixKeeperStyle = 'font-weight:bold; color:#ff2158; font-size: 1.2em';
+				prefix = prefixKeeper + prefixTime + '\n';
+				console.log (prefix, prefixKeeperStyle, safeData.message);
+				break;
+			default: 
+				prefixKeeper = '%cKEEPER ';
+				prefixKeeperStyle = 'font-weight:bold; color:#13efe0';
+				prefix = prefixKeeper + prefixTime + '\n';
+				console.log (prefix, prefixKeeperStyle, safeData.message);
+				break;
+		}
 	},
 	
 	Stop: () => {
@@ -499,4 +725,4 @@ $(window).on('keyup', (data) => {
 KEEPER._timeLastFrameMs = Date.now ();
 
 // Start the update loop
-KEEPER._Update();
+KEEPER._Boot();
