@@ -20,12 +20,24 @@ var Main = {
 		Main.kColSphere = KEEPER.CreateCollisionSphere();
 		Main.kColSphere.Show();
 		
-		// Create a collider with callbacks
+		// Create a collider with callbacks and custom properties
 		Main.kOtherCollider = KEEPER.CreateCollisionSphere({
+			hasDepth: true, //not a part of base object, but will exist in returned object
 			color: 0x5555ff,
 			OnCollisionEnter: (data) => { console.log ('a collision happened!') }, 
-			OnCollisionStay: (data) => { console.log ('a collision is happening!') },
-			OnCollisionLeave: (data) => { console.log ('a collision stopped happening!') },
+			OnCollisionStay: (data) => {  console.log ('a collision is happening!');},
+			OnCollisionLeave: (data) => { 
+				console.log ('a collision stopped happening!') 
+				
+				if ( Main.kOtherCollider.hasDepth ) {
+					Main.kOtherCollider.DrawWithDepth();
+				}
+				else {
+					Main.kOtherCollider.DrawOnTop();
+				}
+				
+				Main.kOtherCollider.hasDepth = !Main.kOtherCollider.hasDepth;
+			},
 		});
 		Main.kOtherCollider.sceneObj.position.x = -2;
 		Main.kOtherCollider.Show();

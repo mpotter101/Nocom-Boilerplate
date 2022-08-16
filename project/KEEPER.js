@@ -207,8 +207,8 @@ var KEEPER = {
 					
 					// A collision has been occurring since last frame
 					if (
-						currentState == false && result == true ||
-						currentState == true && result == true
+						(currentState == false && result == true) ||
+						(currentState == true && result == true)
 					) {
 						collider.OnCollisionStay(data);
 					}
@@ -629,7 +629,7 @@ var KEEPER = {
 		var sceneObj = new THREE.LineSegments (wireframe);
 		
 		// hide collider
-		sceneObj.material.depthTest = false;
+		//sceneObj.material.depthTest = false;
 		sceneObj.material.transparent = true;
 		sceneObj.material.opacity = 0;
 		sceneObj.material.color = new THREE.Color (safeData.color);
@@ -645,6 +645,8 @@ var KEEPER = {
 			enabled: safeData.enabled,
 			Show: () => { sceneObj.material.opacity = 1; },
 			Hide: () => { sceneObj.material.opacity = 0; },
+			DrawOnTop: () => { sceneObj.material.depthTest = false },
+			DrawWithDepth: () => { sceneObj.material.depthTest = true },
 			OnCollisionEnter: safeData.OnCollisionEnter,
 			OnCollisionStay: safeData.OnCollisionStay,
 			OnCollisionLeave: safeData.OnCollisionLeave,
