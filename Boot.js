@@ -5,5 +5,7 @@ var config = {
 	foo: 'bar'
 }
 
-// Start application
-Main.Start(config);
+$(window).on('load', () => {
+	// Start application
+	Main.Start(config);
+})
